@@ -1,0 +1,54 @@
+{
+  "orders": [
+    {
+      "id": "112-1234567-1234567",
+      "date": "2026-06-04",
+      "total": 74.18,
+      "currency": "USD",
+      "status": "shipped",
+      "items": [
+        {
+          "id": "item-1",
+          "name": "USB-C braided cable pack",
+          "quantity": 1,
+          "unitPrice": 18.99,
+          "totalPrice": 18.99,
+          "category": "Electronics"
+        },
+        {
+          "id": "item-2",
+          "name": "Desk notebook set",
+          "quantity": 2,
+          "unitPrice": 16.5,
+          "totalPrice": 33,
+          "category": "Office"
+        },
+        {
+          "id": "item-3",
+          "name": "Sales tax and shipping",
+          "quantity": 1,
+          "unitPrice": 22.19,
+          "totalPrice": 22.19,
+          "category": "Fees"
+        }
+      ]
+    },
+    {
+      "id": "112-7654321-7654321",
+      "date": "2026-06-12",
+      "total": 31.44,
+      "currency": "USD",
+      "status": "delivered",
+      "items": [
+        {
+          "id": "item-1",
+          "name": "Kitchen scale",
+          "quantity": 1,
+          "unitPrice": 31.44,
+          "totalPrice": 31.44,
+          "category": "Home"
+        }
+      ]
+    }
+  ]
+}

@@ -11,6 +11,7 @@ describe("cli", () => {
         "desktop",
         "link",
         "sync",
+        "connectors",
         "connections",
         "review",
         "rules",

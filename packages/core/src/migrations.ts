@@ -360,6 +360,92 @@ export const migrations: Migration[] = [
           ('cat-transfer', NULL, 'Internal Transfer', 1, '1970-01-01T00:00:00.000Z', '1970-01-01T00:00:00.000Z');
       `);
     }
+  },
+  {
+    version: 3,
+    name: "connector_metadata_orders_and_assets",
+    up(db) {
+      db.exec(`
+        ALTER TABLE connections ADD COLUMN connector_id TEXT;
+        ALTER TABLE connections ADD COLUMN display_name TEXT;
+        ALTER TABLE connections ADD COLUMN setup_state_json TEXT;
+        ALTER TABLE connections ADD COLUMN last_sync_at TEXT;
+        ALTER TABLE connections ADD COLUMN last_sync_status TEXT;
+        ALTER TABLE connections ADD COLUMN last_sync_error TEXT;
+
+        CREATE TABLE merchant_orders (
+          order_id TEXT PRIMARY KEY,
+          connection_id TEXT NOT NULL REFERENCES connections(connection_id) ON DELETE CASCADE,
+          provider_order_id TEXT NOT NULL,
+          merchant_name TEXT NOT NULL,
+          order_date TEXT NOT NULL,
+          total_amount REAL NOT NULL,
+          currency TEXT,
+          status TEXT,
+          raw_provider_payload TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          UNIQUE(connection_id, provider_order_id)
+        );
+
+        CREATE TABLE merchant_order_items (
+          order_item_id TEXT PRIMARY KEY,
+          order_id TEXT NOT NULL REFERENCES merchant_orders(order_id) ON DELETE CASCADE,
+          name TEXT NOT NULL,
+          quantity REAL,
+          unit_price REAL,
+          total_price REAL,
+          category TEXT,
+          raw_provider_payload TEXT NOT NULL
+        );
+
+        CREATE TABLE transaction_order_matches (
+          match_id TEXT PRIMARY KEY,
+          transaction_id TEXT NOT NULL REFERENCES transactions(transaction_id) ON DELETE CASCADE,
+          order_id TEXT NOT NULL REFERENCES merchant_orders(order_id) ON DELETE CASCADE,
+          confidence REAL NOT NULL,
+          reason TEXT NOT NULL,
+          matched_at TEXT NOT NULL,
+          UNIQUE(transaction_id, order_id)
+        );
+
+        CREATE TABLE external_assets (
+          asset_id TEXT PRIMARY KEY,
+          connection_id TEXT NOT NULL REFERENCES connections(connection_id) ON DELETE CASCADE,
+          provider_asset_id TEXT NOT NULL,
+          asset_type TEXT NOT NULL,
+          name TEXT NOT NULL,
+          symbol TEXT,
+          quantity REAL,
+          currency TEXT,
+          address TEXT,
+          metadata_json TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          UNIQUE(connection_id, provider_asset_id)
+        );
+
+        CREATE TABLE asset_valuations (
+          valuation_id TEXT PRIMARY KEY,
+          asset_id TEXT NOT NULL REFERENCES external_assets(asset_id) ON DELETE CASCADE,
+          value_amount REAL,
+          currency TEXT,
+          as_of TEXT NOT NULL,
+          source TEXT NOT NULL,
+          low_estimate REAL,
+          mid_estimate REAL,
+          high_estimate REAL,
+          raw_provider_payload TEXT NOT NULL,
+          UNIQUE(asset_id, as_of, source)
+        );
+
+        CREATE INDEX idx_connections_connector ON connections(connector_id, status);
+        CREATE INDEX idx_merchant_orders_connection_date ON merchant_orders(connection_id, order_date DESC);
+        CREATE INDEX idx_order_matches_transaction ON transaction_order_matches(transaction_id);
+        CREATE INDEX idx_external_assets_connection ON external_assets(connection_id, asset_type);
+        CREATE INDEX idx_asset_valuations_asset_as_of ON asset_valuations(asset_id, as_of DESC);
+      `);
+    }
   }
 ];
 

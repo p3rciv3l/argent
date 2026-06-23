@@ -55,9 +55,10 @@ describe("core", () => {
       const row = db.prepare("SELECT max(version) AS version FROM schema_migrations").get() as { version: number };
       const table = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'agent_proposals'").get();
       const columns = db.prepare("PRAGMA table_info(transactions)").all() as Array<{ name: string }>;
-      expect(row.version).toBe(2);
+      expect(row.version).toBe(3);
       expect(table).toBeTruthy();
       expect(columns.map((column) => column.name)).toContain("iso_currency_code");
+      expect(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'external_assets'").get()).toBeTruthy();
     } finally {
       db.close();
     }

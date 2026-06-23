@@ -17,6 +17,8 @@
     "paths": {
       "@argent/core": ["packages/core/src/index.ts"],
       "@argent/core/*": ["packages/core/src/*"],
+      "@argent/connectors": ["packages/connectors/src/index.ts"],
+      "@argent/connectors/*": ["packages/connectors/src/*"],
       "@argent/plaid": ["packages/plaid/src/index.ts"],
       "@argent/plaid/*": ["packages/plaid/src/*"],
       "@argent/mcp": ["apps/mcp/src/index.ts"],

@@ -71,6 +71,8 @@ export function registerIpc(): void {
   ipcMain.removeHandler("argent:transactions");
   ipcMain.removeHandler("argent:review-transactions");
   ipcMain.removeHandler("argent:apply-proposal");
+  ipcMain.removeHandler("argent:setup-connector");
+  ipcMain.removeHandler("argent:sync-connection");
 
   ipcMain.handle("argent:load-data", async () => {
     const [
@@ -82,7 +84,9 @@ export function registerIpc(): void {
       recurrings,
       investments,
       liabilities,
-      proposals
+      proposals,
+      connections,
+      connectorCatalog
     ] = await Promise.all([
       runArgentJson(["report", "dashboard"]),
       runArgentJson(["report", "cash-flow", "--months", "12"]),
@@ -92,7 +96,9 @@ export function registerIpc(): void {
       runArgentJson(["recurrings", "list"]),
       runArgentJson(["report", "investments"]),
       runArgentJson(["report", "liabilities"]),
-      runArgentJson(["proposals", "list"])
+      runArgentJson(["proposals", "list"]),
+      runArgentJson(["connections", "list"]),
+      runArgentJson(["connectors", "catalog"])
     ]);
 
     return {
@@ -104,7 +110,9 @@ export function registerIpc(): void {
       recurrings,
       investments,
       liabilities,
-      proposals
+      proposals,
+      connections,
+      connectorCatalog
     };
   });
 
@@ -120,6 +128,18 @@ export function registerIpc(): void {
 
   ipcMain.handle("argent:apply-proposal", (_event, proposalId: string) =>
     runArgentJson(["proposals", "apply", proposalId])
+  );
+
+  ipcMain.handle("argent:setup-connector", (_event, connectorId: string, options: Record<string, unknown> = {}) => {
+    const args = ["connectors", "setup", connectorId];
+    if (options.demo !== false) {
+      args.push("--demo");
+    }
+    return runArgentJson(args);
+  });
+
+  ipcMain.handle("argent:sync-connection", (_event, connectionId: string) =>
+    runArgentJson(["connectors", "sync", connectionId])
   );
 }
 

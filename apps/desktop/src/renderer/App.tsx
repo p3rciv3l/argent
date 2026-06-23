@@ -1,14 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
+  Building2,
   CalendarClock,
   CheckCircle2,
+  Database,
   Gauge,
+  Link2,
   ListChecks,
   PieChart,
+  Plus,
   RefreshCw,
   Search,
   ShieldAlert,
+  ShoppingBag,
   Sparkles,
   WalletCards
 } from "lucide-react";
@@ -27,6 +32,7 @@ import type { DesktopData, ViewName } from "../shared/ipc.js";
 
 const views: Array<{ id: ViewName; label: string; icon: typeof Gauge }> = [
   { id: "dashboard", label: "Dashboard", icon: Gauge },
+  { id: "connections", label: "Connections", icon: Link2 },
   { id: "transactions", label: "Transactions", icon: ListChecks },
   { id: "budgets", label: "Budgets", icon: PieChart },
   { id: "accounts", label: "Accounts", icon: WalletCards },
@@ -45,7 +51,9 @@ const emptyData: DesktopData = {
   recurrings: [],
   investments: { holdings: [], transactions: [] },
   liabilities: [],
-  proposals: []
+  proposals: [],
+  connections: [],
+  connectorCatalog: []
 };
 
 function money(value: unknown): string {
@@ -71,6 +79,7 @@ export function App() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [busyConnection, setBusyConnection] = useState<string | null>(null);
 
   async function refresh() {
     setLoading(true);
@@ -119,6 +128,26 @@ export function App() {
   async function applyProposal(proposalId: string) {
     await window.argent.applyProposal(proposalId);
     await refresh();
+  }
+
+  async function setupConnector(connectorId: string) {
+    setBusyConnection(connectorId);
+    try {
+      await window.argent.setupConnector(connectorId, { demo: true });
+      await refresh();
+    } finally {
+      setBusyConnection(null);
+    }
+  }
+
+  async function syncConnection(connectionId: string) {
+    setBusyConnection(connectionId);
+    try {
+      await window.argent.syncConnection(connectionId);
+      await refresh();
+    } finally {
+      setBusyConnection(null);
+    }
   }
 
   const dashboard = data.dashboard;
@@ -194,6 +223,16 @@ export function App() {
           </section>
         )}
 
+        {view === "connections" && (
+          <ConnectionsView
+            catalog={data.connectorCatalog}
+            connections={data.connections}
+            busy={busyConnection}
+            onSetup={(connectorId) => void setupConnector(connectorId)}
+            onSync={(connectionId) => void syncConnection(connectionId)}
+          />
+        )}
+
         {view === "transactions" && (
           <section className="panel table-panel">
             <div className="table-actions">
@@ -255,17 +294,33 @@ export function App() {
         )}
 
         {view === "investments" && (
-          <section className="panel table-panel">
-            <SimpleTable
-              rows={(data.investments.holdings as Array<Record<string, unknown>>) ?? []}
-              columns={[
-                ["accountName", "Account"],
-                ["securityName", "Security"],
-                ["tickerSymbol", "Ticker"],
-                ["quantity", "Qty"],
-                ["institutionValue", "Value", money]
-              ]}
-            />
+          <section className="stacked-section">
+            <div className="panel table-panel">
+              <SimpleTable
+                rows={(data.investments.holdings as Array<Record<string, unknown>>) ?? []}
+                columns={[
+                  ["accountName", "Account"],
+                  ["securityName", "Security"],
+                  ["tickerSymbol", "Ticker"],
+                  ["quantity", "Qty"],
+                  ["institutionValue", "Value", money]
+                ]}
+              />
+            </div>
+            <div className="panel table-panel">
+              <SimpleTable
+                rows={(data.investments.externalAssets as Array<Record<string, unknown>>) ?? []}
+                columns={[
+                  ["assetType", "Type"],
+                  ["name", "Asset"],
+                  ["symbol", "Symbol"],
+                  ["quantity", "Qty"],
+                  ["midEstimate", "Mid", money],
+                  ["valueAmount", "Value", money],
+                  ["asOf", "As of"]
+                ]}
+              />
+            </div>
           </section>
         )}
 
@@ -304,6 +359,154 @@ export function App() {
           </section>
         )}
       </main>
+    </div>
+  );
+}
+
+const categoryLabels: Record<string, { label: string; icon: typeof WalletCards }> = {
+  banks: { label: "Banks", icon: WalletCards },
+  cash_apps: { label: "Cash Apps", icon: WalletCards },
+  shopping: { label: "Shopping", icon: ShoppingBag },
+  crypto: { label: "Crypto", icon: Database },
+  real_estate: { label: "Real Estate", icon: Building2 },
+  investments: { label: "Investments", icon: BarChart3 }
+};
+
+function statusLabel(value: unknown): string {
+  const status = asString(value);
+  return status.replace(/_/g, " ") || "unknown";
+}
+
+function ConnectionsView({
+  catalog,
+  connections,
+  busy,
+  onSetup,
+  onSync
+}: {
+  catalog: Array<Record<string, unknown>>;
+  connections: Array<Record<string, unknown>>;
+  busy: string | null;
+  onSetup: (connectorId: string) => void;
+  onSync: (connectionId: string) => void;
+}) {
+  const categories = Object.keys(categoryLabels);
+  const byCategory = new Map<string, Array<Record<string, unknown>>>();
+  for (const connector of catalog) {
+    const category = asString(connector.category);
+    byCategory.set(category, [...(byCategory.get(category) ?? []), connector]);
+  }
+
+  return (
+    <section className="connections-grid">
+      <div className="connector-catalog">
+        {categories.map((category) => {
+          const items = byCategory.get(category) ?? [];
+          if (items.length === 0) {
+            return null;
+          }
+          const CategoryIcon = categoryLabels[category]?.icon ?? Link2;
+          return (
+            <section className="catalog-section" key={category}>
+              <div className="section-title">
+                <CategoryIcon size={16} />
+                <h2>{categoryLabels[category]?.label ?? category}</h2>
+              </div>
+              <div className="connector-list">
+                {items.map((connector) => {
+                  const id = asString(connector.id);
+                  const status = asString(connector.status);
+                  const isAvailable = status === "available" && id !== "plaid";
+                  return (
+                    <article className="connector-card" key={id}>
+                      <div className="connector-card-main">
+                        <strong>{asString(connector.name)}</strong>
+                        <span className={`status-pill status-${status}`}>{statusLabel(status)}</span>
+                      </div>
+                      <div className="capability-row">
+                        {(connector.capabilities as string[] | undefined)?.slice(0, 3).map((capability) => (
+                          <span key={capability}>{capability.replace(/_/g, " ")}</span>
+                        ))}
+                      </div>
+                      {isAvailable && (
+                        <button
+                          className="command-button compact"
+                          onClick={() => onSetup(id)}
+                          disabled={busy === id}
+                          title={`Add ${asString(connector.name)}`}
+                        >
+                          <Plus size={15} />
+                          <span>Add</span>
+                        </button>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+          );
+        })}
+      </div>
+
+      <section className="panel table-panel">
+        <ConnectionTable rows={connections} busy={busy} onSync={onSync} />
+      </section>
+    </section>
+  );
+}
+
+function ConnectionTable({
+  rows,
+  busy,
+  onSync
+}: {
+  rows: Array<Record<string, unknown>>;
+  busy: string | null;
+  onSync: (connectionId: string) => void;
+}) {
+  return (
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Connector</th>
+            <th>Status</th>
+            <th>Last sync</th>
+            <th>Secret</th>
+            <th className="action-col"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => {
+            const connectionId = asString(row.connectionId);
+            const connectorId = asString(row.connectorId) || asString(row.provider);
+            return (
+              <tr key={connectionId}>
+                <td>{asString(row.displayName) || asString(row.institutionName) || connectionId}</td>
+                <td>{connectorId}</td>
+                <td>
+                  <span className={`status-pill status-${asString(row.status)}`}>{statusLabel(row.status)}</span>
+                </td>
+                <td>{asString(row.lastSyncAt) || asString(row.updatedAt)}</td>
+                <td>{row.hasAccessToken ? "stored" : ""}</td>
+                <td className="action-col">
+                  {connectorId !== "plaid" && (
+                    <button
+                      className="icon-button table-icon"
+                      onClick={() => onSync(connectionId)}
+                      disabled={busy === connectionId}
+                      title="Sync"
+                    >
+                      <RefreshCw size={15} className={busy === connectionId ? "spin" : ""} />
+                    </button>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }

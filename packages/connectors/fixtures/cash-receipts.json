@@ -1,0 +1,34 @@
+{
+  "receipts": [
+    {
+      "id": "venmo-2026-06-05-001",
+      "provider": "venmo",
+      "date": "2026-06-05",
+      "description": "Venmo payment to Sam Rivera",
+      "counterparty": "Sam Rivera",
+      "amount": 25,
+      "currency": "USD",
+      "direction": "sent"
+    },
+    {
+      "id": "paypal-2026-06-06-001",
+      "provider": "paypal",
+      "date": "2026-06-06",
+      "description": "PayPal payment to Maker Supplies",
+      "counterparty": "Maker Supplies",
+      "amount": 48.32,
+      "currency": "USD",
+      "direction": "sent"
+    },
+    {
+      "id": "cashapp-2026-06-08-001",
+      "provider": "cash_app",
+      "date": "2026-06-08",
+      "description": "Cash App payment from Jordan Lee",
+      "counterparty": "Jordan Lee",
+      "amount": 18,
+      "currency": "USD",
+      "direction": "received"
+    }
+  ]
+}

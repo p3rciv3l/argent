@@ -1,5 +1,5 @@
 export type Direction = "debit" | "credit";
-export type ProviderName = "plaid" | "mock";
+export type ProviderName = string;
 export type ReviewStatus = "unreviewed" | "reviewed" | "needs_review";
 export type TransactionType = "regular" | "income" | "internal_transfer" | "excluded" | "recurring_linked";
 export type ProposalStatus = "pending" | "applied" | "rejected";
@@ -82,6 +82,8 @@ export interface ConnectionRecord {
   provider: ProviderName;
   providerItemId: string;
   accessToken: string | null;
+  connectorId?: string | null;
+  displayName?: string | null;
   environment: string | null;
   institutionId: string | null;
   institutionName: string | null;
@@ -89,6 +91,10 @@ export interface ConnectionRecord {
   cursor: string | null;
   status: string;
   consentExpirationAt: string | null;
+  setupStateJson?: string | null;
+  lastSyncAt?: string | null;
+  lastSyncStatus?: string | null;
+  lastSyncError?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -168,6 +174,63 @@ export interface SyncChanges {
   removed: RemovedTransactionLike[];
   cursor: string | null;
   syncedAt: string;
+}
+
+export interface MerchantOrderInput {
+  orderId: string;
+  connectionId: string;
+  providerOrderId: string;
+  merchantName: string;
+  orderDate: string;
+  totalAmount: number;
+  currency?: string | null;
+  status?: string | null;
+  rawProviderPayload?: unknown;
+  items?: MerchantOrderItemInput[];
+}
+
+export interface MerchantOrderItemInput {
+  orderItemId: string;
+  name: string;
+  quantity?: number | null;
+  unitPrice?: number | null;
+  totalPrice?: number | null;
+  category?: string | null;
+  rawProviderPayload?: unknown;
+}
+
+export interface ExternalAssetInput {
+  assetId: string;
+  connectionId: string;
+  providerAssetId: string;
+  assetType: string;
+  name: string;
+  symbol?: string | null;
+  quantity?: number | null;
+  currency?: string | null;
+  address?: string | null;
+  metadata?: unknown;
+}
+
+export interface AssetValuationInput {
+  valuationId?: string;
+  assetId: string;
+  valueAmount?: number | null;
+  currency?: string | null;
+  asOf: string;
+  source: string;
+  lowEstimate?: number | null;
+  midEstimate?: number | null;
+  highEstimate?: number | null;
+  rawProviderPayload?: unknown;
+}
+
+export interface TransactionOrderMatchInput {
+  transactionId: string;
+  orderId: string;
+  confidence: number;
+  reason: string;
+  matchedAt?: string;
 }
 
 export interface MockSyncFixture {

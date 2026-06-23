@@ -5,5 +5,7 @@ contextBridge.exposeInMainWorld("argent", {
   transactions: (filters) => ipcRenderer.invoke("argent:transactions", filters),
   reviewTransactions: (transactionIds, status) =>
     ipcRenderer.invoke("argent:review-transactions", transactionIds, status),
-  applyProposal: (proposalId) => ipcRenderer.invoke("argent:apply-proposal", proposalId)
+  applyProposal: (proposalId) => ipcRenderer.invoke("argent:apply-proposal", proposalId),
+  setupConnector: (connectorId, options) => ipcRenderer.invoke("argent:setup-connector", connectorId, options),
+  syncConnection: (connectionId) => ipcRenderer.invoke("argent:sync-connection", connectionId)
 });

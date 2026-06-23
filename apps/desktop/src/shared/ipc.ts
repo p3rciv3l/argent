@@ -1,5 +1,6 @@
 export type ViewName =
   | "dashboard"
+  | "connections"
   | "transactions"
   | "budgets"
   | "accounts"
@@ -18,6 +19,8 @@ export interface DesktopData {
   investments: Record<string, unknown>;
   liabilities: Array<Record<string, unknown>>;
   proposals: Array<Record<string, unknown>>;
+  connections: Array<Record<string, unknown>>;
+  connectorCatalog: Array<Record<string, unknown>>;
 }
 
 export interface ArgentBridge {
@@ -25,4 +28,6 @@ export interface ArgentBridge {
   transactions(filters: Record<string, unknown>): Promise<Array<Record<string, unknown>>>;
   reviewTransactions(transactionIds: string[], status: "reviewed" | "unreviewed" | "needs_review"): Promise<{ changed: number }>;
   applyProposal(proposalId: string): Promise<{ applied: true; proposalId: string }>;
+  setupConnector(connectorId: string, options?: Record<string, unknown>): Promise<Record<string, unknown>>;
+  syncConnection(connectionId: string): Promise<Record<string, unknown>>;
 }

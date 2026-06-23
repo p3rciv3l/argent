@@ -60,6 +60,32 @@ describe("cli smoke", () => {
       expect(dashboard.monthIncome).toBe(3200);
       const liabilities = JSON.parse(runCli(["report", "liabilities", "--db", databasePath, "--json"], env)) as unknown[];
       expect(liabilities).toEqual([]);
+
+      const catalog = JSON.parse(runCli(["connectors", "catalog", "--json"], env)) as Array<{ id: string; status: string }>;
+      expect(catalog.map((connector) => connector.id)).toEqual(expect.arrayContaining(["amazon-orders", "coinbase", "crypto-wallet"]));
+
+      const setup = JSON.parse(runCli(["connectors", "setup", "coinbase", "--demo", "--db", databasePath, "--json"], env)) as {
+        connectionId: string;
+        accessToken?: string;
+        hasAccessToken: boolean;
+        setupState: Record<string, unknown>;
+      };
+      expect(setup.connectionId).toContain("coinbase");
+      expect(setup.hasAccessToken).toBe(false);
+      expect(setup).not.toHaveProperty("accessToken");
+      expect(setup.setupState).toMatchObject({ mode: "demo_fixture" });
+
+      const connectorSync = JSON.parse(runCli(["connectors", "sync", setup.connectionId, "--db", databasePath, "--json"], env)) as {
+        status: string;
+        externalAssets: number;
+        assetValuations: number;
+      };
+      expect(connectorSync).toMatchObject({ status: "succeeded", externalAssets: 2, assetValuations: 2 });
+
+      const investments = JSON.parse(runCli(["report", "investments", "--db", databasePath, "--json"], env)) as {
+        externalAssets: Array<Record<string, unknown>>;
+      };
+      expect(investments.externalAssets.some((asset) => asset.assetType === "crypto")).toBe(true);
     } finally {
       fs.rmSync(tmpdir, { recursive: true, force: true });
     }

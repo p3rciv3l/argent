@@ -251,6 +251,11 @@ h2 {
   cursor: not-allowed;
 }
 
+.command-button.compact {
+  min-height: 32px;
+  padding: 0 10px;
+}
+
 .table-wrap {
   overflow: auto;
   max-height: calc(100vh - 150px);
@@ -294,6 +299,123 @@ th {
 
 .amount.credit {
   color: #247a5a;
+}
+
+.action-col {
+  width: 72px;
+  text-align: right;
+}
+
+.table-icon {
+  width: 30px;
+  height: 30px;
+  box-shadow: 0 0 0 1px #e0d9cc;
+}
+
+.stacked-section {
+  display: grid;
+  gap: 14px;
+}
+
+.connections-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 440px) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.connector-catalog {
+  display: grid;
+  gap: 14px;
+}
+
+.catalog-section {
+  display: grid;
+  gap: 8px;
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  color: #394148;
+}
+
+.connector-list {
+  display: grid;
+  gap: 8px;
+}
+
+.connector-card {
+  display: grid;
+  gap: 10px;
+  min-height: 98px;
+  padding: 12px;
+  border: 1px solid #ddd7cb;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.connector-card-main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.connector-card-main strong {
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: #edf0ea;
+  color: #394148;
+  font-size: 12px;
+  line-height: 1;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+.status-available,
+.status-healthy,
+.status-succeeded {
+  background: #e2f1e8;
+  color: #176143;
+}
+
+.status-partner_required,
+.status-needs_credentials,
+.status-attention {
+  background: #fbefd4;
+  color: #866115;
+}
+
+.status-blocked,
+.status-failed {
+  background: #f4ded9;
+  color: #8f3f35;
+}
+
+.capability-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.capability-row span {
+  min-height: 22px;
+  padding: 3px 7px;
+  border-radius: 6px;
+  background: #f1eee6;
+  color: #5a646b;
+  font-size: 12px;
 }
 
 .proposal-list {
@@ -349,6 +471,10 @@ th {
 
   .dashboard-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .connections-grid {
+    grid-template-columns: 1fr;
   }
 
   .span-2 {

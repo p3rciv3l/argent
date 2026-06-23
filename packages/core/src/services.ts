@@ -177,14 +177,27 @@ export function getDashboard(db: SqliteDatabase, referenceDate = new Date()): Da
   const netWorth = db
     .prepare(
       `
-      SELECT COALESCE(sum(
-        CASE
-          WHEN type IN ('credit', 'loan') THEN -COALESCE(balance_current, 0)
-          ELSE COALESCE(balance_current, 0)
-        END
-      ), 0) AS value
-      FROM accounts
-      WHERE hidden_at IS NULL AND closed_at IS NULL AND excluded_at IS NULL
+      SELECT COALESCE(sum(value), 0) AS value
+      FROM (
+        SELECT
+          CASE
+            WHEN type IN ('credit', 'loan') THEN -COALESCE(balance_current, 0)
+            ELSE COALESCE(balance_current, 0)
+          END AS value
+        FROM accounts
+        WHERE hidden_at IS NULL AND closed_at IS NULL AND excluded_at IS NULL
+
+        UNION ALL
+
+        SELECT COALESCE(av.mid_estimate, av.value_amount, 0) AS value
+        FROM external_assets ea
+        JOIN asset_valuations av ON av.asset_id = ea.asset_id
+        JOIN (
+          SELECT asset_id, max(as_of) AS as_of
+          FROM asset_valuations
+          GROUP BY asset_id
+        ) latest ON latest.asset_id = av.asset_id AND latest.as_of = av.as_of
+      )
     `
     )
     .get() as { value: number };
@@ -374,7 +387,39 @@ export function getInvestments(db: SqliteDatabase): Record<string, unknown> {
     `
     )
     .all();
-  return { holdings, transactions };
+  const externalAssets = db
+    .prepare(
+      `
+      SELECT
+        ea.asset_id AS assetId,
+        ea.asset_type AS assetType,
+        ea.name,
+        ea.symbol,
+        ea.quantity,
+        ea.currency,
+        ea.address,
+        c.display_name AS connectionName,
+        c.connector_id AS connectorId,
+        av.value_amount AS valueAmount,
+        av.low_estimate AS lowEstimate,
+        av.mid_estimate AS midEstimate,
+        av.high_estimate AS highEstimate,
+        av.as_of AS asOf,
+        av.source AS valuationSource
+      FROM external_assets ea
+      JOIN connections c ON c.connection_id = ea.connection_id
+      LEFT JOIN asset_valuations av ON av.asset_id = ea.asset_id
+      LEFT JOIN (
+        SELECT asset_id, max(as_of) AS as_of
+        FROM asset_valuations
+        GROUP BY asset_id
+      ) latest ON latest.asset_id = av.asset_id AND latest.as_of = av.as_of
+      WHERE av.valuation_id IS NULL OR latest.asset_id IS NOT NULL
+      ORDER BY COALESCE(av.mid_estimate, av.value_amount, 0) DESC, ea.name ASC
+    `
+    )
+    .all();
+  return { holdings, transactions, externalAssets };
 }
 
 export function getLiabilities(db: SqliteDatabase): Array<Record<string, unknown>> {

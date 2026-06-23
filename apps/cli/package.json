@@ -15,6 +15,7 @@
     "dev": "tsx src/main.ts"
   },
   "dependencies": {
+    "@argent/connectors": "workspace:*",
     "@argent/core": "workspace:*",
     "@argent/mcp": "workspace:*",
     "@argent/plaid": "workspace:*",

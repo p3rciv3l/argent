@@ -23,6 +23,9 @@ importers:
 
   apps/cli:
     dependencies:
+      '@argent/connectors':
+        specifier: workspace:*
+        version: link:../../packages/connectors
       '@argent/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -89,6 +92,12 @@ importers:
         version: 4.4.3
 
   packages/agent-skills: {}
+
+  packages/connectors:
+    dependencies:
+      '@argent/core':
+        specifier: workspace:*
+        version: link:../core
 
   packages/core:
     dependencies:

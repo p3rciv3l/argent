@@ -5,8 +5,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 import { Command } from "commander";
+import { getConnectorModule, listConnectorDefinitions, type ConnectorSetupOptions } from "@argent/connectors";
 import {
   applyAgentProposal,
+  applyTransactionChanges,
   applyTransactionRules,
   createAgentProposal,
   ensureArgentPaths,
@@ -19,13 +21,25 @@ import {
   getInvestments,
   getLiabilities,
   getRecurrings,
+  getConnection,
   listAgentProposals,
+  listConnections,
   listTransactions,
   loadTransactionRules,
+  markMatchingConnectorTransfers,
+  matchMerchantOrdersToTransactions,
   openDatabase,
   recordExport,
+  recordSyncRun,
   reviewTransactions,
   runRecurringEnrichment,
+  insertAuditLog,
+  updateConnectionSyncState,
+  upsertAccounts,
+  upsertAssetValuations,
+  upsertConnection,
+  upsertExternalAssets,
+  upsertMerchantOrders,
   writeCsv
 } from "@argent/core";
 import {
@@ -39,7 +53,6 @@ import {
   startPlaidLink,
   syncPlaidTransactions
 } from "@argent/plaid";
-import { getConnection, listConnections } from "@argent/core";
 import { startMcpServer } from "@argent/mcp";
 
 type Jsonable = unknown;
@@ -112,6 +125,200 @@ function runDesktop(): Promise<void> {
       }
     });
   });
+}
+
+function parseSetupState(setupStateJson: string | null | undefined): Record<string, unknown> {
+  if (!setupStateJson) {
+    return {};
+  }
+  const parsed = JSON.parse(setupStateJson) as unknown;
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+}
+
+function redactConnection(connection: NonNullable<ReturnType<typeof getConnection>>): Record<string, unknown> {
+  const { accessToken, setupStateJson, ...safe } = connection;
+  return {
+    ...safe,
+    hasAccessToken: Boolean(accessToken),
+    setupState: parseSetupState(setupStateJson)
+  };
+}
+
+function connectorSetupOptions(options: {
+  demo?: boolean;
+  fixture?: string;
+  displayName?: string;
+  providerItemId?: string;
+  apiKeyEnv?: string;
+  credentialLabel?: string;
+  chain?: string;
+  address?: string;
+  propertyAddress?: string;
+}): ConnectorSetupOptions {
+  return {
+    demo: Boolean(options.demo),
+    ...(options.fixture ? { fixturePath: path.resolve(process.cwd(), options.fixture) } : {}),
+    ...(options.displayName ? { displayName: options.displayName } : {}),
+    ...(options.providerItemId ? { providerItemId: options.providerItemId } : {}),
+    ...(options.apiKeyEnv ? { apiKeyEnv: options.apiKeyEnv } : {}),
+    ...(options.credentialLabel ? { credentialLabel: options.credentialLabel } : {}),
+    ...(options.chain ? { chain: options.chain } : {}),
+    ...(options.address ? { address: options.address } : {}),
+    ...(options.propertyAddress ? { propertyAddress: options.propertyAddress } : {})
+  };
+}
+
+function setupConnectorConnection(
+  db: ReturnType<typeof openDatabase>,
+  connectorId: string,
+  options: ConnectorSetupOptions
+): Record<string, unknown> {
+  const connector = getConnectorModule(connectorId);
+  if (!connector) {
+    throw new Error(`Connector ${connectorId} is not available for local setup.`);
+  }
+  const setup = connector.buildSetup(options);
+  const now = new Date().toISOString();
+  const connectionId = upsertConnection(
+    db,
+    {
+      provider: setup.provider,
+      providerItemId: setup.providerItemId,
+      connectorId: setup.connectorId,
+      displayName: setup.displayName,
+      accessToken: setup.accessToken ?? null,
+      environment: setup.environment ?? "local",
+      institutionName: setup.institutionName ?? setup.displayName,
+      status: setup.status ?? "healthy",
+      setupState: setup.setupState
+    },
+    now
+  );
+  insertAuditLog(db, {
+    actor: "cli",
+    action: "connector.setup",
+    targetType: "connection",
+    targetId: connectionId,
+    metadata: { connectorId },
+    createdAt: now
+  });
+  const connection = getConnection(db, connectionId);
+  if (!connection) {
+    throw new Error(`Connector setup did not create ${connectionId}.`);
+  }
+  return redactConnection(connection);
+}
+
+async function syncConnectorConnection(
+  db: ReturnType<typeof openDatabase>,
+  connectionId: string,
+  options: { fixture?: string } = {}
+): Promise<Record<string, unknown>> {
+  const connection = getConnection(db, connectionId);
+  if (!connection) {
+    throw new Error(`No connection found for ${connectionId}.`);
+  }
+  const connectorId = connection.connectorId ?? connection.provider;
+  const connector = getConnectorModule(connectorId);
+  if (!connector) {
+    throw new Error(`No local sync module is registered for connector ${connectorId}.`);
+  }
+
+  const startedAt = new Date().toISOString();
+  try {
+    const payload = await connector.sync(connection, {
+      ...(options.fixture ? { fixturePath: path.resolve(process.cwd(), options.fixture) } : {}),
+      env: process.env
+    });
+    if (payload.accounts.length > 0) {
+      upsertAccounts(db, payload.accounts, connection.connectionId, payload.syncedAt);
+    }
+    if (payload.added.length > 0 || payload.modified.length > 0 || payload.removed.length > 0) {
+      applyTransactionChanges(db, {
+        connectionId: connection.connectionId,
+        provider: payload.provider,
+        added: payload.added,
+        modified: payload.modified,
+        removed: payload.removed,
+        cursor: payload.cursor ?? null,
+        syncedAt: payload.syncedAt
+      });
+    } else {
+      recordSyncRun(db, {
+        provider: payload.provider,
+        connectionId: connection.connectionId,
+        status: "succeeded",
+        startedAt,
+        completedAt: payload.syncedAt,
+        addedCount: payload.orders.length + payload.externalAssets.length + payload.assetValuations.length
+      });
+    }
+    const orderWrite = upsertMerchantOrders(db, payload.orders, payload.syncedAt);
+    const assetCount = upsertExternalAssets(db, payload.externalAssets, payload.syncedAt);
+    const valuationCount = upsertAssetValuations(db, payload.assetValuations);
+    const orderMatches =
+      connector.definition.id === "amazon-orders"
+        ? matchMerchantOrdersToTransactions(db, connection.connectionId, { matchedAt: payload.syncedAt })
+        : 0;
+    const internalTransfers =
+      connector.definition.id === "cash-app-receipts"
+        ? markMatchingConnectorTransfers(db, connection.connectionId, { matchedAt: payload.syncedAt })
+        : 0;
+
+    updateConnectionSyncState(db, connection.connectionId, {
+      status: "succeeded",
+      syncedAt: payload.syncedAt
+    });
+    insertAuditLog(db, {
+      actor: "cli",
+      action: "connector.sync",
+      targetType: "connection",
+      targetId: connection.connectionId,
+      metadata: {
+        connectorId,
+        accounts: payload.accounts.length,
+        transactions: payload.added.length + payload.modified.length,
+        orders: orderWrite.orders,
+        orderItems: orderWrite.items,
+        externalAssets: assetCount,
+        assetValuations: valuationCount,
+        orderMatches,
+        internalTransfers
+      },
+      createdAt: payload.syncedAt
+    });
+    return {
+      connectionId: connection.connectionId,
+      connectorId,
+      status: "succeeded",
+      accounts: payload.accounts.length,
+      transactions: payload.added.length + payload.modified.length,
+      orders: orderWrite.orders,
+      orderItems: orderWrite.items,
+      externalAssets: assetCount,
+      assetValuations: valuationCount,
+      orderMatches,
+      internalTransfers,
+      syncedAt: payload.syncedAt
+    };
+  } catch (error) {
+    const completedAt = new Date().toISOString();
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    recordSyncRun(db, {
+      provider: connection.provider,
+      connectionId: connection.connectionId,
+      status: "failed",
+      startedAt,
+      completedAt,
+      errorMessage
+    });
+    updateConnectionSyncState(db, connection.connectionId, {
+      status: "failed",
+      syncedAt: completedAt,
+      errorMessage
+    });
+    throw error;
+  }
 }
 
 export function buildProgram(): Command {
@@ -199,6 +406,68 @@ export function buildProgram(): Command {
       });
       print(result, options.json);
     });
+  sync
+    .command("connector")
+    .argument("<connection-id>", "connector connection id")
+    .description("Sync a locally configured non-Plaid connector.")
+    .option("--fixture <path>", "override synthetic fixture path")
+    .option("--db <path>", "SQLite database path")
+    .option("--json", "print JSON")
+    .action(async (connectionId: string, options: { fixture?: string; db?: string; json?: boolean }) => {
+      const result = await withDbAsync(options.db, (db) => syncConnectorConnection(db, connectionId, options));
+      print(result, options.json);
+    });
+
+  const connectors = program.command("connectors").description("Inspect, set up, and sync local connector modules.");
+  connectors
+    .command("catalog")
+    .description("List available, partner-required, and planned connector definitions.")
+    .option("--json", "print JSON")
+    .action((options: { json?: boolean }) => {
+      print(listConnectorDefinitions(), options.json);
+    });
+  connectors
+    .command("setup")
+    .argument("<connector-id>", "connector id from connectors catalog")
+    .description("Create or update a local connector connection.")
+    .option("--demo", "use the bundled synthetic fixture setup")
+    .option("--fixture <path>", "synthetic fixture path")
+    .option("--display-name <name>", "connection display name")
+    .option("--provider-item-id <id>", "provider item id override")
+    .option("--api-key-env <name>", "environment variable containing a local read-only API key")
+    .option("--credential-label <label>", "non-secret credential label")
+    .option("--chain <chain>", "wallet chain, such as btc or eth")
+    .option("--address <address>", "wallet address")
+    .option("--property-address <address>", "real estate property address")
+    .option("--db <path>", "SQLite database path")
+    .option("--json", "print JSON")
+    .action((connectorId: string, options: {
+      demo?: boolean;
+      fixture?: string;
+      displayName?: string;
+      providerItemId?: string;
+      apiKeyEnv?: string;
+      credentialLabel?: string;
+      chain?: string;
+      address?: string;
+      propertyAddress?: string;
+      db?: string;
+      json?: boolean;
+    }) => {
+      const result = withDb(options.db, (db) => setupConnectorConnection(db, connectorId, connectorSetupOptions(options)));
+      print(result, options.json);
+    });
+  connectors
+    .command("sync")
+    .argument("<connection-id>", "connector connection id")
+    .description("Sync a locally configured connector connection.")
+    .option("--fixture <path>", "override synthetic fixture path")
+    .option("--db <path>", "SQLite database path")
+    .option("--json", "print JSON")
+    .action(async (connectionId: string, options: { fixture?: string; db?: string; json?: boolean }) => {
+      const result = await withDbAsync(options.db, (db) => syncConnectorConnection(db, connectionId, options));
+      print(result, options.json);
+    });
 
   const connections = program.command("connections").description("Inspect or manage provider connections.");
   connections
@@ -208,10 +477,7 @@ export function buildProgram(): Command {
     .action((options: { db?: string; json?: boolean }) => {
       print(
         withDb(options.db, (db) =>
-          listConnections(db).map(({ accessToken, ...connection }) => ({
-            ...connection,
-            hasAccessToken: Boolean(accessToken)
-          }))
+          listConnections(db).map((connection) => redactConnection(connection))
         ),
         options.json
       );

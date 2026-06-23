@@ -70,6 +70,41 @@ async function main(): Promise<void> {
       );
     }
 
+    await window.webContents.executeJavaScript(`
+      [...document.querySelectorAll('button')].find((button) => button.textContent?.includes('Connections'))?.click();
+    `);
+    const connectionsText = await waitFor(
+      () => window.webContents.executeJavaScript("document.body.innerText"),
+      (text: string) => text.includes("Amazon orders") && text.includes("Coinbase"),
+      "connections catalog"
+    );
+    await window.webContents.executeJavaScript(`
+      [...document.querySelectorAll('button')]
+        .find((button) => button.title === 'Add Amazon orders')
+        ?.click();
+    `);
+    const connectorSetupCheck = await waitFor(
+      () =>
+        window.webContents.executeJavaScript(`
+          window.argent.loadData().then((data) => {
+            const connection = data.connections.find((row) => row.connectorId === 'amazon-orders');
+            return connection ? { ok: true, connectionId: connection.connectionId } : { ok: false };
+          })
+        `),
+      (value: { ok: boolean }) => value.ok,
+      "demo connector setup"
+    ) as { ok: boolean; connectionId: string };
+    const connectorSyncCheck = (await window.webContents.executeJavaScript(`
+      window.argent.syncConnection(${JSON.stringify(connectorSetupCheck.connectionId)})
+    `)) as { status: string; orders?: number; orderItems?: number };
+    if (connectorSyncCheck.status !== "succeeded" || (connectorSyncCheck.orders ?? 0) < 1) {
+      throw new Error(`Connector sync failed: ${JSON.stringify(connectorSyncCheck)}`);
+    }
+
+    await window.webContents.executeJavaScript(`
+      [...document.querySelectorAll('button')].find((button) => button.textContent?.includes('Dashboard'))?.click();
+    `);
+
     const chartCount = await waitFor(
       () => window.webContents.executeJavaScript("document.querySelectorAll('.recharts-wrapper svg').length"),
       (count: number) => count >= 2,
@@ -126,6 +161,8 @@ async function main(): Promise<void> {
           ok: true,
           chartCount,
           loadedTransactionCount: loadedDataCheck.transactionCount,
+          connectionsCatalogVisible: connectionsText.includes("Amazon orders"),
+          connectorOrdersSynced: connectorSyncCheck.orders,
           transactionRowsVisible: transactionText.includes("Northside Market"),
           reviewedCount,
           liabilitiesVisible: liabilitiesText.includes("Utilization"),

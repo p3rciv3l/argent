@@ -1,0 +1,21 @@
+{
+  "asOf": "2026-06-20T00:00:00.000Z",
+  "assets": [
+    {
+      "id": "BTC",
+      "name": "Bitcoin",
+      "symbol": "BTC",
+      "quantity": 0.125,
+      "valueAmount": 8125,
+      "currency": "USD"
+    },
+    {
+      "id": "ETH",
+      "name": "Ethereum",
+      "symbol": "ETH",
+      "quantity": 2.4,
+      "valueAmount": 8400,
+      "currency": "USD"
+    }
+  ]
+}
