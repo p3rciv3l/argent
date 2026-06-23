@@ -24,3 +24,5 @@ jobs:
       - run: pnpm build
       - run: pnpm test
       - run: xvfb-run -a pnpm smoke
+        env:
+          ELECTRON_DISABLE_SANDBOX: "1"
