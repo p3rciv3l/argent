@@ -1,0 +1,15 @@
+{
+  "name": "@argent/agent-skills",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Agent skill package for Argent local finance workflows.",
+  "files": [
+    "skills",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "node -e \"console.log('agent skill package has no build step')\"",
+    "typecheck": "node -e \"console.log('agent skill package has no typecheck step')\"",
+    "test": "node -e \"console.log('agent skill package has no tests')\""
+  }
+}

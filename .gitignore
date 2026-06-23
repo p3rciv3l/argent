@@ -1,0 +1,31 @@
+# Dependencies and build output
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+**/src/**/*.js
+**/src/**/*.js.map
+artifacts/
+
+# Local runtime data
+.argent/
+.bank-transactions/
+exports/
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+*.csv
+
+# Secrets and OAuth material
+.env
+.env.*
+!.env.example
+*oauth-token*.json
+*oauth-credentials*.json
+*credentials*.json
+
+# OS/editor noise
+.DS_Store
+Icon?
+*.log

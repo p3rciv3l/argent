@@ -1,0 +1,126 @@
+{
+  "item": {
+    "item_id": "mock-item-checking",
+    "access_token": "mock-access-token",
+    "institution_id": "mock-institution",
+    "institution_name": "Mock Credit Union",
+    "link_session_id": "mock-link-session",
+    "environment": "sandbox"
+  },
+  "accounts": [
+    {
+      "account_id": "mock-checking",
+      "name": "Everyday Checking",
+      "type": "depository",
+      "subtype": "checking",
+      "mask": "0000",
+      "balances": {
+        "available": 2400.12,
+        "current": 2450.12,
+        "iso_currency_code": "USD"
+      }
+    },
+    {
+      "account_id": "mock-card",
+      "name": "Rewards Card",
+      "type": "credit",
+      "subtype": "credit card",
+      "mask": "1111",
+      "balances": {
+        "current": 320.45,
+        "limit": 5000,
+        "iso_currency_code": "USD"
+      }
+    }
+  ],
+  "pages": [
+    {
+      "added": [
+        {
+          "transaction_id": "mock-txn-payroll-1",
+          "account_id": "mock-checking",
+          "date": "2026-06-01",
+          "name": "ACME PAYROLL",
+          "merchant_name": "Acme Payroll",
+          "amount": -3200,
+          "iso_currency_code": "USD",
+          "personal_finance_category": {
+            "primary": "INCOME",
+            "detailed": "INCOME_WAGES",
+            "confidence_level": "VERY_HIGH"
+          },
+          "payment_channel": "other"
+        },
+        {
+          "transaction_id": "mock-txn-market-1",
+          "account_id": "mock-card",
+          "date": "2026-06-03",
+          "name": "NORTHSIDE MARKET",
+          "merchant_name": "Northside Market",
+          "amount": 86.42,
+          "iso_currency_code": "USD",
+          "personal_finance_category": {
+            "primary": "FOOD_AND_DRINK",
+            "detailed": "FOOD_AND_DRINK_GROCERIES",
+            "confidence_level": "HIGH"
+          },
+          "payment_channel": "in store",
+          "location": {
+            "city": "Portland",
+            "region": "OR",
+            "country": "US"
+          }
+        },
+        {
+          "transaction_id": "mock-txn-stream-1",
+          "account_id": "mock-card",
+          "date": "2026-04-10",
+          "name": "STREAMBOX",
+          "merchant_name": "Streambox",
+          "amount": 15.99,
+          "iso_currency_code": "USD",
+          "personal_finance_category": {
+            "primary": "ENTERTAINMENT",
+            "detailed": "ENTERTAINMENT_TV_AND_MOVIES",
+            "confidence_level": "HIGH"
+          },
+          "payment_channel": "online"
+        },
+        {
+          "transaction_id": "mock-txn-stream-2",
+          "account_id": "mock-card",
+          "date": "2026-05-10",
+          "name": "STREAMBOX",
+          "merchant_name": "Streambox",
+          "amount": 15.99,
+          "iso_currency_code": "USD",
+          "personal_finance_category": {
+            "primary": "ENTERTAINMENT",
+            "detailed": "ENTERTAINMENT_TV_AND_MOVIES",
+            "confidence_level": "HIGH"
+          },
+          "payment_channel": "online"
+        },
+        {
+          "transaction_id": "mock-txn-stream-3",
+          "account_id": "mock-card",
+          "date": "2026-06-10",
+          "name": "STREAMBOX",
+          "merchant_name": "Streambox",
+          "amount": 15.99,
+          "iso_currency_code": "USD",
+          "personal_finance_category": {
+            "primary": "ENTERTAINMENT",
+            "detailed": "ENTERTAINMENT_TV_AND_MOVIES",
+            "confidence_level": "HIGH"
+          },
+          "payment_channel": "online"
+        }
+      ],
+      "modified": [],
+      "removed": [],
+      "next_cursor": "mock-cursor-1",
+      "has_more": false
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "name": "@argent/desktop",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Argent Electron desktop app.",
+  "main": "dist/main.js",
+  "scripts": {
+    "dev": "concurrently -k \"vite --host 127.0.0.1\" \"wait-on http://127.0.0.1:5173 && pnpm build:main && ARGENT_DESKTOP_DEV_SERVER=http://127.0.0.1:5173 electron dist/main.js\"",
+    "build:main": "tsc -p tsconfig.node.json && cp src/preload.cjs dist/preload.cjs",
+    "build:renderer": "vite build",
+    "build": "pnpm build:main && pnpm build:renderer",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "smoke": "pnpm --filter @argent/cli build && pnpm build && electron dist/smoke.js"
+  },
+  "dependencies": {
+    "electron": "^40.0.0",
+    "lucide-react": "^0.561.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "recharts": "^3.5.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.1",
+    "concurrently": "^9.2.1",
+    "vite": "^7.3.0",
+    "wait-on": "^9.0.3"
+  }
+}

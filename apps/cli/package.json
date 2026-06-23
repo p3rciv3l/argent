@@ -1,0 +1,24 @@
+{
+  "name": "@argent/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Argent command-line interface.",
+  "bin": {
+    "argent": "dist/main.js"
+  },
+  "main": "dist/main.js",
+  "types": "dist/main.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "dev": "tsx src/main.ts"
+  },
+  "dependencies": {
+    "@argent/core": "workspace:*",
+    "@argent/mcp": "workspace:*",
+    "@argent/plaid": "workspace:*",
+    "commander": "^14.0.3",
+    "dotenv": "^17.4.2"
+  }
+}
