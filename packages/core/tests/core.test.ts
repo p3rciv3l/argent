@@ -6,15 +6,21 @@ import {
   buildCsv,
   getCashFlow,
   getDashboard,
+  getInvestments,
   listTransactions,
+  insertTransactionsForTest,
+  matchMerchantOrdersToTransactions,
   migrate,
   normalizeTransaction,
   openDatabase,
   parseDescriptorLocation,
   reviewTransactions,
   getLiabilities,
+  upsertAssetValuations,
   upsertAccounts,
-  upsertConnection
+  upsertConnection,
+  upsertExternalAssets,
+  upsertMerchantOrders
 } from "../src/index.js";
 
 function seedDb() {
@@ -324,6 +330,212 @@ describe("core", () => {
       expect(dashboard.monthSpent).toBeCloseTo(86.42);
       expect(dashboard.monthIncome).toBeCloseTo(3200);
       expect(getCashFlow(db, 1, "2026-06")[0]?.net).toBeCloseTo(3113.58);
+    } finally {
+      db.close();
+    }
+  });
+
+  test("upserts merchant orders idempotently and replaces stale order items", () => {
+    const { db, connectionId } = seedDb();
+    try {
+      const first = upsertMerchantOrders(
+        db,
+        [
+          {
+            orderId: "order-1",
+            connectionId,
+            providerOrderId: "provider-order-1",
+            merchantName: "Amazon",
+            orderDate: "2026-06-04",
+            totalAmount: 74.18,
+            currency: "USD",
+            items: [
+              { orderItemId: "order-1:item-1", name: "Cable", quantity: 1, totalPrice: 18.99 },
+              { orderItemId: "order-1:item-2", name: "Notebook", quantity: 2, totalPrice: 33 }
+            ]
+          }
+        ],
+        "2026-06-05T00:00:00.000Z"
+      );
+      const second = upsertMerchantOrders(
+        db,
+        [
+          {
+            orderId: "order-1",
+            connectionId,
+            providerOrderId: "provider-order-1",
+            merchantName: "Amazon",
+            orderDate: "2026-06-04",
+            totalAmount: 70,
+            currency: "USD",
+            items: [{ orderItemId: "order-1:item-3", name: "Replacement item", quantity: 1, totalPrice: 70 }]
+          }
+        ],
+        "2026-06-06T00:00:00.000Z"
+      );
+
+      const orderCount = (db.prepare("SELECT count(*) AS count FROM merchant_orders").get() as { count: number }).count;
+      const itemRows = db
+        .prepare("SELECT name FROM merchant_order_items ORDER BY name")
+        .all() as Array<{ name: string }>;
+      const total = (db.prepare("SELECT total_amount AS total FROM merchant_orders WHERE order_id = ?").get("order-1") as { total: number }).total;
+
+      expect(first).toEqual({ orders: 1, items: 2 });
+      expect(second).toEqual({ orders: 1, items: 1 });
+      expect(orderCount).toBe(1);
+      expect(itemRows.map((row) => row.name)).toEqual(["Replacement item"]);
+      expect(total).toBe(70);
+    } finally {
+      db.close();
+    }
+  });
+
+  test("matches merchant orders once and ignores excluded or same-connection transactions", () => {
+    const { db, connectionId: orderConnectionId } = seedDb();
+    try {
+      const bankConnectionId = upsertConnection(db, {
+        connectionId: "mock:sandbox:card",
+        provider: "mock",
+        providerItemId: "card",
+        environment: "sandbox",
+        institutionName: "Mock Card"
+      });
+      upsertAccounts(
+        db,
+        [
+          {
+            account_id: "card",
+            name: "Card",
+            type: "credit",
+            subtype: "credit card",
+            balances: { current: 0, iso_currency_code: "USD" }
+          }
+        ],
+        bankConnectionId,
+        "2026-06-01T00:00:00.000Z"
+      );
+      insertTransactionsForTest(db, [
+        normalizeTransaction(
+          {
+            transaction_id: "same-connection-amazon",
+            account_id: "checking",
+            date: "2026-06-04",
+            name: "AMAZON SAME CONNECTION",
+            merchant_name: "Amazon",
+            amount: 74.18
+          },
+          orderConnectionId,
+          "2026-06-04T00:00:00.000Z",
+          "mock"
+        ),
+        normalizeTransaction(
+          {
+            transaction_id: "excluded-amazon",
+            account_id: "card",
+            date: "2026-06-04",
+            name: "AMAZON EXCLUDED",
+            merchant_name: "Amazon",
+            amount: 74.18
+          },
+          bankConnectionId,
+          "2026-06-04T00:00:00.000Z",
+          "mock"
+        ),
+        normalizeTransaction(
+          {
+            transaction_id: "matched-amazon",
+            account_id: "card",
+            date: "2026-06-05",
+            name: "AMAZON MKTPLACE",
+            merchant_name: "Amazon",
+            amount: 74.18
+          },
+          bankConnectionId,
+          "2026-06-05T00:00:00.000Z",
+          "mock"
+        )
+      ]);
+      db.prepare("UPDATE transactions SET transaction_type = 'excluded' WHERE transaction_id = 'excluded-amazon'").run();
+      upsertMerchantOrders(
+        db,
+        [
+          {
+            orderId: "amazon-order-1",
+            connectionId: orderConnectionId,
+            providerOrderId: "provider-order-1",
+            merchantName: "Amazon",
+            orderDate: "2026-06-04",
+            totalAmount: 74.18
+          }
+        ],
+        "2026-06-06T00:00:00.000Z"
+      );
+
+      expect(matchMerchantOrdersToTransactions(db, orderConnectionId, { matchedAt: "2026-06-06T00:00:00.000Z" })).toBe(1);
+      expect(matchMerchantOrdersToTransactions(db, orderConnectionId, { matchedAt: "2026-06-07T00:00:00.000Z" })).toBe(0);
+      const matches = db
+        .prepare("SELECT transaction_id AS transactionId FROM transaction_order_matches")
+        .all() as Array<{ transactionId: string }>;
+      expect(matches.map((row) => row.transactionId)).toEqual(["matched-amazon"]);
+    } finally {
+      db.close();
+    }
+  });
+
+  test("deduplicates asset valuations and reports only latest external asset value", () => {
+    const { db, connectionId } = seedDb();
+    try {
+      upsertExternalAssets(
+        db,
+        [
+          {
+            assetId: "asset-btc",
+            connectionId,
+            providerAssetId: "BTC",
+            assetType: "crypto",
+            name: "Bitcoin",
+            symbol: "BTC",
+            quantity: 1,
+            currency: "USD",
+            metadata: { source: "test" }
+          }
+        ],
+        "2026-06-01T00:00:00.000Z"
+      );
+      upsertAssetValuations(db, [
+        {
+          assetId: "asset-btc",
+          valueAmount: 100,
+          currency: "USD",
+          asOf: "2026-06-01T00:00:00.000Z",
+          source: "test"
+        }
+      ]);
+      upsertAssetValuations(db, [
+        {
+          assetId: "asset-btc",
+          valueAmount: 125,
+          currency: "USD",
+          asOf: "2026-06-01T00:00:00.000Z",
+          source: "test"
+        },
+        {
+          assetId: "asset-btc",
+          valueAmount: 150,
+          currency: "USD",
+          asOf: "2026-06-02T00:00:00.000Z",
+          source: "test"
+        }
+      ]);
+
+      const valuationRows = db.prepare("SELECT count(*) AS count FROM asset_valuations").get() as { count: number };
+      const investments = getInvestments(db) as { externalAssets: Array<Record<string, unknown>> };
+      const dashboard = getDashboard(db, new Date("2026-06-03T00:00:00.000Z"));
+
+      expect(valuationRows.count).toBe(2);
+      expect(investments.externalAssets).toHaveLength(1);
+      expect(investments.externalAssets[0]?.valueAmount).toBe(150);
+      expect(dashboard.netWorth).toBe(1150);
     } finally {
       db.close();
     }

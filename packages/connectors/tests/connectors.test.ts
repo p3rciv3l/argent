@@ -16,7 +16,7 @@ import {
   upsertMerchantOrders
 } from "@argent/core";
 import { getConnectorModule, listConnectorDefinitions } from "../src/index.js";
-import type { ConnectorModule } from "../src/index.js";
+import type { ConnectorModule, ConnectorSetupOptions } from "../src/index.js";
 
 function requireConnector(id: string): ConnectorModule {
   const connector = getConnectorModule(id);
@@ -26,8 +26,12 @@ function requireConnector(id: string): ConnectorModule {
   return connector;
 }
 
-function setupConnection(db: ReturnType<typeof openDatabase>, connector: ConnectorModule): NonNullable<ReturnType<typeof getConnection>> {
-  const setup = connector.buildSetup({ demo: true });
+function setupConnection(
+  db: ReturnType<typeof openDatabase>,
+  connector: ConnectorModule,
+  options: ConnectorSetupOptions = { demo: true }
+): NonNullable<ReturnType<typeof getConnection>> {
+  const setup = connector.buildSetup(options);
   const connectionId = upsertConnection(
     db,
     {
@@ -69,6 +73,9 @@ describe("connectors", () => {
     expect(definitions.find((definition) => definition.id === "apple-financekit")).toMatchObject({
       status: "blocked"
     });
+    expect(getConnectorModule("mastercard-finicity")).toBeNull();
+    expect(getConnectorModule("apple-financekit")).toBeNull();
+    expect(getConnectorModule("zillow")).toBeNull();
   });
 
   test("cash app receipt sync creates accounts and marks matching bank transfers internal", async () => {
@@ -242,6 +249,58 @@ describe("connectors", () => {
       const dashboard = getDashboard(db, new Date("2026-06-20T00:00:00.000Z"));
       expect(investments.externalAssets.length).toBeGreaterThanOrEqual(3);
       expect(dashboard.netWorth).toBeGreaterThan(20000);
+    } finally {
+      db.close();
+    }
+  });
+
+  test("coinbase setup marks missing configured credentials without exposing secret values in setup state", () => {
+    const previous = process.env.ARGENT_TEST_COINBASE_KEY;
+    delete process.env.ARGENT_TEST_COINBASE_KEY;
+    try {
+      const missing = requireConnector("coinbase").buildSetup({
+        apiKeyEnv: "ARGENT_TEST_COINBASE_KEY",
+        credentialLabel: "local-test"
+      });
+      expect(missing.status).toBe("needs_credentials");
+      expect(JSON.stringify(missing.setupState)).not.toContain("secret");
+
+      process.env.ARGENT_TEST_COINBASE_KEY = "secret-readonly-token";
+      const present = requireConnector("coinbase").buildSetup({
+        apiKeyEnv: "ARGENT_TEST_COINBASE_KEY",
+        credentialLabel: "local-test"
+      });
+      expect(present.status).toBe("healthy");
+      expect(present.accessToken).toBe("secret-readonly-token");
+      expect(JSON.stringify(present.setupState)).not.toContain("secret-readonly-token");
+    } finally {
+      if (previous === undefined) {
+        delete process.env.ARGENT_TEST_COINBASE_KEY;
+      } else {
+        process.env.ARGENT_TEST_COINBASE_KEY = previous;
+      }
+    }
+  });
+
+  test("crypto wallet sync filters to the configured public address and never stores private key metadata", async () => {
+    const db = openDatabase(":memory:");
+    try {
+      const connector = requireConnector("crypto-wallet");
+      const connection = setupConnection(db, connector, {
+        demo: true,
+        chain: "btc",
+        address: "bc1q000000000000000000000000000000000000000"
+      });
+      const payload = await connector.sync(connection, { now: "2026-06-20T00:00:00.000Z" });
+
+      expect(payload.externalAssets).toHaveLength(1);
+      expect(payload.assetValuations).toHaveLength(1);
+      expect(payload.externalAssets[0]).toMatchObject({
+        symbol: "BTC",
+        address: "bc1q000000000000000000000000000000000000000"
+      });
+      expect(JSON.stringify(payload.externalAssets[0]?.metadata)).toContain("noPrivateKeys");
+      expect(JSON.stringify(payload.externalAssets[0])).not.toContain("privateKey");
     } finally {
       db.close();
     }

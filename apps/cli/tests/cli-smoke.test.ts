@@ -8,8 +8,19 @@ function runCli(args: string[], env: NodeJS.ProcessEnv): string {
   return execFileSync(process.execPath, [path.resolve(process.cwd(), "dist/main.js"), ...args], {
     cwd: path.resolve(process.cwd(), "../.."),
     env,
-    encoding: "utf8"
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"]
   });
+}
+
+function runCliFailure(args: string[], env: NodeJS.ProcessEnv): string {
+  try {
+    runCli(args, env);
+  } catch (error) {
+    const failure = error as { stderr?: Buffer | string };
+    return typeof failure.stderr === "string" ? failure.stderr : failure.stderr?.toString("utf8") ?? String(error);
+  }
+  throw new Error(`Expected command to fail: ${args.join(" ")}`);
 }
 
 describe("cli smoke", () => {
@@ -63,6 +74,9 @@ describe("cli smoke", () => {
 
       const catalog = JSON.parse(runCli(["connectors", "catalog", "--json"], env)) as Array<{ id: string; status: string }>;
       expect(catalog.map((connector) => connector.id)).toEqual(expect.arrayContaining(["amazon-orders", "coinbase", "crypto-wallet"]));
+      expect(runCliFailure(["connectors", "setup", "mastercard-finicity", "--db", databasePath, "--json"], env)).toContain(
+        "not available for local setup"
+      );
 
       const setup = JSON.parse(runCli(["connectors", "setup", "coinbase", "--demo", "--db", databasePath, "--json"], env)) as {
         connectionId: string;
@@ -81,11 +95,18 @@ describe("cli smoke", () => {
         assetValuations: number;
       };
       expect(connectorSync).toMatchObject({ status: "succeeded", externalAssets: 2, assetValuations: 2 });
+      const repeatedConnectorSync = JSON.parse(runCli(["connectors", "sync", setup.connectionId, "--db", databasePath, "--json"], env)) as {
+        status: string;
+        externalAssets: number;
+        assetValuations: number;
+      };
+      expect(repeatedConnectorSync).toMatchObject({ status: "succeeded", externalAssets: 2, assetValuations: 2 });
 
       const investments = JSON.parse(runCli(["report", "investments", "--db", databasePath, "--json"], env)) as {
         externalAssets: Array<Record<string, unknown>>;
       };
       expect(investments.externalAssets.some((asset) => asset.assetType === "crypto")).toBe(true);
+      expect(investments.externalAssets).toHaveLength(2);
     } finally {
       fs.rmSync(tmpdir, { recursive: true, force: true });
     }
