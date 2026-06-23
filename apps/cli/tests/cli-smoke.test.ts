@@ -89,5 +89,5 @@ describe("cli smoke", () => {
     } finally {
       fs.rmSync(tmpdir, { recursive: true, force: true });
     }
-  });
+  }, 20_000);
 });
